@@ -1,0 +1,1 @@
+streamlitpandasnumpyscikit-learn# ajoutez d'autres dpendances ncessaires ici
