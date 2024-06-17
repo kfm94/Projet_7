@@ -13,7 +13,8 @@ import pickle
 plt.style.use('fivethirtyeight')
 
 # URL de l'API
-url = "http://127.0.0.1:51000"
+#url = "http://127.0.0.1:51000"
+url = "https://mon-api-ef236947dddf.herokuapp.com/"
 
 @st.cache_data
 def load_data():
