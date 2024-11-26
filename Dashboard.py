@@ -4,17 +4,14 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import shap
 import plotly.express as px
 from zipfile import ZipFile
-from sklearn.cluster import KMeans
 import pickle
 
 plt.style.use('fivethirtyeight')
 
 # URL de l'API
-#url = "http://127.0.0.1:51000"
-url = "https://mon-api-ef236947dddf.herokuapp.com/"
+url = "http://127.0.0.1:51000"
 
 @st.cache_data
 def load_data():
@@ -30,17 +27,6 @@ def load_data():
     target = data.iloc[:, -1:]
 
     return data, sample, target, description
-
-@st.cache_resource
-def load_model():
-    with open('LGBMClassifier.pkl', 'rb') as file: 
-        clf = pickle.load(file)
-    return clf
-
-@st.cache_data
-def load_knn(sample):
-    knn = knn_training(sample)
-    return knn
 
 @st.cache_data
 def load_infos_gen(data):
@@ -72,29 +58,14 @@ def load_income_population(sample):
     return df_income
 
 @st.cache_data
-def load_prediction(sample, id, _clf):  # Ajouter un trait de soulignement devant clf
-    X = sample.iloc[:, :-1]
-    score = _clf.predict_proba(X[X.index == int(id)])[:, 1]
-    return score
-
-@st.cache_data
-def load_kmeans(sample, id, _knn):  # Ajouter un trait de soulignement devant knn
-    index = sample[sample.index == int(id)].index.values
-    index = index[0]
-    data_client = pd.DataFrame(sample.loc[sample.index, :])
-    df_neighbors = pd.DataFrame(_knn.fit_predict(data_client), index=data_client.index)
-    df_neighbors = pd.concat([df_neighbors, data], axis=1)
-    return df_neighbors.iloc[:, 1:].sample(10)
-
-@st.cache_data
-def knn_training(sample):
-    knn = KMeans(n_clusters=2).fit(sample)
-    return knn
+def load_prediction(id, _url):  # Requête API pour la prédiction
+    response = requests.get(f"{_url}/predict_from_id?client={id}")
+    data = response.json()
+    return data["prediction"], data["prediction_proba"]
 
 # Charger les données et les modèles
 data, sample, target, description = load_data()
 id_client = sample.index.values
-clf = load_model()
 
 def main():
     #######################################
@@ -158,75 +129,39 @@ def main():
         st.subheader("*Income (USD)*")
         st.write("**Income total : **{:.0f}".format(infos_client["AMT_INCOME_TOTAL"].values[0]))
         st.write("**Credit amount : **{:.0f}".format(infos_client["AMT_CREDIT"].values[0]))
-        st.write("**Credit annuities : **{:.0f}".format(infos_client["AMT_ANNUITY"].values[0]))
-        st.write("**Amount of property for credit : **{:.0f}".format(infos_client["AMT_GOODS_PRICE"].values[0]))
 
-        # Distribution des revenus
-        data_income = load_income_population(sample)
-        fig, ax = plt.subplots(figsize=(10, 5))
-        sns.histplot(data_income["AMT_INCOME_TOTAL"], edgecolor='k', color="goldenrod", bins=10)
-        ax.axvline(int(infos_client["AMT_INCOME_TOTAL"].values[0]), color="green", linestyle='--')
-        ax.set(title='Customer income', xlabel='Income (USD)', ylabel='')
+        # Afficher un nuage de points coloré avec le client sélectionné
+        st.subheader("**Customer Scoring Visualization**")
+
+        # Extraire les caractéristiques pour le nuage de points
+        x = data["AMT_INCOME_TOTAL"]
+        y = data["AMT_CREDIT"]
+
+        # Création du nuage de points
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.scatter(x, y, c='blue', label='Other clients', alpha=0.5)
+
+        # Tracer le point du client sélectionné en rouge
+        client_data = infos_client.iloc[0]
+        ax.scatter(client_data["AMT_INCOME_TOTAL"], client_data["AMT_CREDIT"], c='red', label='Selected Client', edgecolors='black')
+
+        # Ajouter des labels
+        ax.set_xlabel('Income Total (USD)')
+        ax.set_ylabel('Credit Amount (USD)')
+        ax.set_title('Income vs Credit Amount (Scoring)')
+
+        # Légende
+        ax.legend(loc='best')
         st.pyplot(fig)
 
-        # Relation entre l'âge et les revenus
-        data_sk = data.reset_index(drop=False)
-        data_sk.DAYS_BIRTH = (data_sk['DAYS_BIRTH'] / 365).round(1)
-        fig = px.scatter(data_sk, x='DAYS_BIRTH', y="AMT_INCOME_TOTAL", 
-                         size="AMT_INCOME_TOTAL", color='CODE_GENDER',
-                         hover_data=['NAME_FAMILY_STATUS', 'CNT_CHILDREN', 'NAME_CONTRACT_TYPE', 'SK_ID_CURR'])
+        # Prédiction du risque de défaut
+        st.subheader("**Risk prediction**")
 
-        fig.update_layout({'plot_bgcolor': '#f0f0f0'}, 
-                          title={'text': "Relationship Age / Income Total", 'x': 0.5, 'xanchor': 'center'}, 
-                          title_font=dict(size=20, family='Arial'))
-        st.plotly_chart(fig)
-
-    #######################################
-    # Analyse de la solvabilité du client
-    #######################################
-
-    st.header("**Customer solvency analysis**")
-
-    prediction = load_prediction(sample, chk_id, clf)
-    st.write("**Default probability : **{:.2f} %".format(prediction[0]*100))
-
-    if prediction >= 0.5:
-        st.markdown("<h3 style='color: red;'>Loan is not granted</h3>", unsafe_allow_html=True)
-    else:
-        st.markdown("<h3 style='color: green;'>Loan is granted</h3>", unsafe_allow_html=True)
-
-    #######################################
-    # Importance des caractéristiques / description
-    #######################################
-
-    st.header("**Features importance / description**")
-
-    if st.checkbox("Show feature importance ?"):
-        shap.initjs()
-        X = sample.iloc[:, :-1]
-        explainer = shap.TreeExplainer(clf)
-        shap_values = explainer.shap_values(X)
-
-        fig, ax = plt.subplots(figsize=(10, 10))
-        shap.summary_plot(shap_values, X)  # Correction ici pour utiliser l'ensemble des valeurs shap
-        st.pyplot(fig)
-
-        if st.checkbox("Show feature description ?"):
-            list_features = X.columns.to_list()
-            feature = st.selectbox('Feature checklist', list_features)
-            st.table(description.loc[description.index == feature][:1])
-
-    #######################################
-    # Affichage des fichiers clients similaires
-    #######################################
-
-    st.header("**Similar customers file display**")
-
-    knn = load_knn(sample)
-    knn_df = load_kmeans(sample, chk_id, knn)
-
-    if st.checkbox("Show similar customer files ?"):
-        st.dataframe(knn_df)
+        # Appel à l'API pour obtenir la prédiction
+        prediction, prediction_proba = load_prediction(chk_id, url)
+        
+        st.write(f"Risk prediction: {'Default' if prediction == 1 else 'No Default'}")
+        st.write(f"Probability of default: {prediction_proba:.2f}")
 
 if __name__ == "__main__":
     main()
