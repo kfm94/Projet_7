@@ -81,5 +81,11 @@ def get_feature_distribution(feature_name):
 def home():
     return "Bonjour"
 
+#if __name__ == '__main__':
+#    app.run(debug=True, port=5000)
+    
+   import os
+
 if __name__ == '__main__':
-    app.run(debug=True, port=51000)
+    port = int(os.environ.get("PORT", 5000))  # Utilise la variable d'environnement PORT
+    app.run(debug=True, port=port)
