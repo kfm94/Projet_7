@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from flask import Flask, request, jsonify
 import pickle
+import os
 
 app = Flask(__name__)
 
@@ -84,7 +85,7 @@ def home():
 #if __name__ == '__main__':
 #    app.run(debug=True, port=5000)
     
-   import os
+  
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))  # Utilise la variable d'environnement PORT
