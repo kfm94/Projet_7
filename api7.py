@@ -89,4 +89,5 @@ def home():
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))  # Utilise la variable d'environnement PORT
+    
     app.run(debug=True, port=port)
