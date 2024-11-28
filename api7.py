@@ -19,13 +19,20 @@ model_features = train.columns[:572]
 @app.route('/predict', methods=['POST'])
 def predict():
     data = request.get_json()
+    if not data:
+        return jsonify({"error": "Aucune donnée reçue"}), 400
+    
     input_data = pd.DataFrame(data)
     
     # Sélectionner les caractéristiques correctes
     input_data = input_data[model_features]
     
-    prediction_proba = loaded_model.predict_proba(input_data)[:, 1].item()
-    prediction = 1 if prediction_proba >= 0.5 else 0
+    try:
+        # Prédiction (probabilité)
+        prediction_proba = loaded_model.predict_proba(input_data)[:, 1].item()
+        prediction = 1 if prediction_proba >= 0.5 else 0
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     
     return jsonify({"prediction": prediction, "prediction_proba": prediction_proba})
 
@@ -56,38 +63,42 @@ def predict_from_id():
 @app.route('/details/id=<int:id_client>', methods=['GET'])
 def get_customer_details(id_client):
     try:
+        # Assurez-vous que l'ID client existe dans l'index
+        if id_client >= len(train) or id_client < 0:
+            return jsonify({"error": "Client ID not found"}), 404
+        
         data_client = train.iloc[id_client].to_dict()
         return jsonify(data_client)
-    except IndexError:
-        return jsonify({"error": "Client ID not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/feature_importance', methods=['GET'])
 def get_feature_importance():
-    # Placeholder for feature importance data
-    feature_importance = {
-        "client_shap_values": [0.1, 0.2, -0.1]  # Replace with actual SHAP values
-    }
-    return jsonify(feature_importance)
+    # Placeholder pour les valeurs SHAP
+    try:
+        feature_importance = {
+            "client_shap_values": [0.1, 0.2, -0.1]  # Remplacer par les valeurs réelles
+        }
+        return jsonify(feature_importance)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/distribution/feature=<feature_name>', methods=['GET'])
 def get_feature_distribution(feature_name):
-    # Placeholder for feature distribution data
-    distribution_data = {
-        "accepted": [0.1, 0.2, 0.3],  # Replace with actual distribution data
-        "rejected": [0.3, 0.2, 0.1]   # Replace with actual distribution data
-    }
-    return jsonify(distribution_data)
+    try:
+        # Placeholder pour la distribution des caractéristiques
+        distribution_data = {
+            "accepted": [0.1, 0.2, 0.3],  # Remplacer par la distribution réelle
+            "rejected": [0.3, 0.2, 0.1]   # Remplacer par la distribution réelle
+        }
+        return jsonify(distribution_data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/', methods=['GET'])
 def home():
-    return "Bonjour"
-
-#if __name__ == '__main__':
-#    app.run(debug=True, port=5000)
-    
-  
+    return "Bonjour, l'API est prête !"
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))  # Utilise la variable d'environnement PORT
-    
     app.run(debug=True, port=port)
