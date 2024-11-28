@@ -60,9 +60,21 @@ def load_income_population(sample):
 
 @st.cache_data
 def load_prediction(id, _url):  # Requête API pour la prédiction
-    response = requests.get(f"{_url}/predict_from_id?client={id}")
-    data = response.json()
-    return data["prediction"], data["prediction_proba"]
+    try:
+        response = requests.get(f"{_url}/predict_from_id?client={id}")
+        response.raise_for_status()  # Vérifie les erreurs HTTP
+        data = response.json()
+        return data["prediction"], data["prediction_proba"]
+    except requests.exceptions.HTTPError as http_err:
+        st.error(f"Erreur HTTP: {http_err}")
+        return None, None
+    except requests.exceptions.RequestException as req_err:
+        st.error(f"Erreur de connexion: {req_err}")
+        return None, None
+    except ValueError as json_err:
+        st.error(f"Erreur de décodage JSON: {json_err}")
+        st.error(f"Réponse de l'API : {response.text}")
+        return None, None
 
 # Charger les données et les modèles
 data, sample, target, description = load_data()
@@ -161,8 +173,11 @@ def main():
         # Appel à l'API pour obtenir la prédiction
         prediction, prediction_proba = load_prediction(chk_id, url)
         
-        st.write(f"Risk prediction: {'Default' if prediction == 1 else 'No Default'}")
-        st.write(f"Probability of default: {prediction_proba:.2f}")
+        if prediction is not None and prediction_proba is not None:
+            st.write(f"Risk prediction: {'Default' if prediction == 1 else 'No Default'}")
+            st.write(f"Probability of default: {prediction_proba:.2f}")
+        else:
+            st.warning("Erreur lors de la récupération de la prédiction.")
 
 if __name__ == "__main__":
     main()
