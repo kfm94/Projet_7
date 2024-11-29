@@ -12,7 +12,8 @@ plt.style.use('fivethirtyeight')
 
 # URL de l'API
 #url = "http://127.0.0.1:51000"
-url = "https://proj7-4e678206e3eb.herokuapp.com/"
+#url = "https://proj7-4e678206e3eb.herokuapp.com/"
+url = "https://mon-api-ef236947dddf.herokuapp.com/"
 
 
 @st.cache_data
