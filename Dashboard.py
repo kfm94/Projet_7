@@ -9,8 +9,8 @@ import plotly.express as px
 plt.style.use('fivethirtyeight')
 
 # URL de l'API
-#url = "http://127.0.0.1:51000"
-url = "https://mon-api-ef236947dddf.herokuapp.com/"
+url = "http://127.0.0.1:51000"
+
 
 # Charger les données statiques
 @st.cache_data
