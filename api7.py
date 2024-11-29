@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from flask import Flask, request, jsonify
 import pickle
-import os
 
 app = Flask(__name__)
 
@@ -15,26 +14,6 @@ train = pd.read_csv('X_train.csv')
 
 # Obtenir les colonnes de caractéristiques utilisées pour entraîner le modèle
 model_features = train.columns[:572]
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Aucune donnée reçue"}), 400
-    
-    input_data = pd.DataFrame(data)
-    
-    # Sélectionner les caractéristiques correctes
-    input_data = input_data[model_features]
-    
-    try:
-        # Prédiction (probabilité)
-        prediction_proba = loaded_model.predict_proba(input_data)[:, 1].item()
-        prediction = 1 if prediction_proba >= 0.5 else 0
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    
-    return jsonify({"prediction": prediction, "prediction_proba": prediction_proba})
 
 @app.route('/predict_from_id', methods=['GET'])
 def predict_from_id():
@@ -63,42 +42,14 @@ def predict_from_id():
 @app.route('/details/id=<int:id_client>', methods=['GET'])
 def get_customer_details(id_client):
     try:
-        # Assurez-vous que l'ID client existe dans l'index
-        if id_client >= len(train) or id_client < 0:
-            return jsonify({"error": "Client ID not found"}), 404
-        
         data_client = train.iloc[id_client].to_dict()
         return jsonify(data_client)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/feature_importance', methods=['GET'])
-def get_feature_importance():
-    # Placeholder pour les valeurs SHAP
-    try:
-        feature_importance = {
-            "client_shap_values": [0.1, 0.2, -0.1]  # Remplacer par les valeurs réelles
-        }
-        return jsonify(feature_importance)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/distribution/feature=<feature_name>', methods=['GET'])
-def get_feature_distribution(feature_name):
-    try:
-        # Placeholder pour la distribution des caractéristiques
-        distribution_data = {
-            "accepted": [0.1, 0.2, 0.3],  # Remplacer par la distribution réelle
-            "rejected": [0.3, 0.2, 0.1]   # Remplacer par la distribution réelle
-        }
-        return jsonify(distribution_data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except IndexError:
+        return jsonify({"error": "Client ID not found"}), 404
 
 @app.route('/', methods=['GET'])
 def home():
-    return "Bonjour, l'API est prête !"
+    return "Bonjour"
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))  # Utilise la variable d'environnement PORT
-    app.run(debug=True, port=port)
+    app.run(debug=True, port=51000)
