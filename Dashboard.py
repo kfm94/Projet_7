@@ -4,17 +4,20 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import shap
 import plotly.express as px
 from zipfile import ZipFile    
+from sklearn.cluster import KMeans
+import pickle
 
 plt.style.use('fivethirtyeight')
 
 # URL de l'API
-url = "https://mon-api-ef236947dddf.herokuapp.com"
+#url = "http://127.0.0.1:51000"
+url = "https://mon-api-ef236947dddf.herokuapp.com/"
 
 @st.cache_data
 def load_data():
-    """Charger les données nécessaires."""
     z = ZipFile("default_risk.zip")
     data = pd.read_csv(z.open('default_risk.csv'), index_col='SK_ID_CURR', encoding='utf-8')
 
@@ -28,9 +31,19 @@ def load_data():
 
     return data, sample, target, description
 
+@st.cache_resource
+def load_model():
+    with open('LGBMClassifier.pkl', 'rb') as file: 
+        clf = pickle.load(file)
+    return clf
+
+@st.cache_data
+def load_knn(sample):
+    knn = knn_training(sample)
+    return knn
+
 @st.cache_data
 def load_infos_gen(data):
-    """Extraire les informations générales sur les données."""
     lst_infos = [data.shape[0],
                  round(data["AMT_INCOME_TOTAL"].mean(), 2),
                  round(data["AMT_CREDIT"].mean(), 2)]
@@ -44,37 +57,44 @@ def load_infos_gen(data):
     return nb_credits, rev_moy, credits_moy, targets
 
 def identite_client(data, id):
-    """Récupérer les informations d'identité du client."""
     data_client = data[data.index == int(id)]
     return data_client
 
 @st.cache_data
 def load_age_population(data):
-    """Charger les données d'âge de la population."""
     data_age = round((data["DAYS_BIRTH"] / 365), 2)
     return data_age
 
 @st.cache_data
 def load_income_population(sample):
-    """Charger les données de revenus de la population."""
     df_income = pd.DataFrame(sample["AMT_INCOME_TOTAL"])
     df_income = df_income.loc[df_income['AMT_INCOME_TOTAL'] < 200000, :]
     return df_income
 
-def get_prediction_from_api(client_id):
-    """Appeler l'API pour obtenir la prédiction du client."""
-    try:
-        response = requests.get(f"{url}/predict_from_id", params={"client": client_id})
-        response.raise_for_status()
-        data = response.json()
-        return data['prediction'], data['prediction_proba']
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching prediction: {e}")
-        return None, None
+@st.cache_data
+def load_prediction(sample, id, _clf):  # Ajouter un trait de soulignement devant clf
+    X = sample.iloc[:, :-1]
+    score = _clf.predict_proba(X[X.index == int(id)])[:, 1]
+    return score
 
-# Charger les données
+@st.cache_data
+def load_kmeans(sample, id, _knn):  # Ajouter un trait de soulignement devant knn
+    index = sample[sample.index == int(id)].index.values
+    index = index[0]
+    data_client = pd.DataFrame(sample.loc[sample.index, :])
+    df_neighbors = pd.DataFrame(_knn.fit_predict(data_client), index=data_client.index)
+    df_neighbors = pd.concat([df_neighbors, data], axis=1)
+    return df_neighbors.iloc[:, 1:].sample(10)
+
+@st.cache_data
+def knn_training(sample):
+    knn = KMeans(n_clusters=2).fit(sample)
+    return knn
+
+# Charger les données et les modèles
 data, sample, target, description = load_data()
 id_client = sample.index.values
+clf = load_model()
 
 def main():
     #######################################
@@ -156,12 +176,6 @@ def main():
                          size="AMT_INCOME_TOTAL", color='CODE_GENDER',
                          hover_data=['NAME_FAMILY_STATUS', 'CNT_CHILDREN', 'NAME_CONTRACT_TYPE', 'SK_ID_CURR'])
 
-        # Ajouter un point pour le client sélectionné
-        client_age = int(infos_client["DAYS_BIRTH"].values / 365)
-        client_income = infos_client["AMT_INCOME_TOTAL"].values[0]
-        fig.add_scatter(x=[client_age], y=[client_income], mode='markers', marker=dict(size=15, color='red'),
-                        name='Selected Client')
-
         fig.update_layout({'plot_bgcolor': '#f0f0f0'}, 
                           title={'text': "Relationship Age / Income Total", 'x': 0.5, 'xanchor': 'center'}, 
                           title_font=dict(size=20, family='Arial'))
@@ -173,15 +187,46 @@ def main():
 
     st.header("**Customer solvency analysis**")
 
-    prediction, prediction_proba = get_prediction_from_api(chk_id)
+    prediction = load_prediction(sample, chk_id, clf)
+    st.write("**Default probability : **{:.2f} %".format(prediction[0]*100))
 
-    if prediction is not None:
-        st.write("**Default probability : **{:.2f} %".format(prediction_proba * 100))
+    if prediction >= 0.5:
+        st.markdown("<h3 style='color: red;'>Loan is not granted</h3>", unsafe_allow_html=True)
+    else:
+        st.markdown("<h3 style='color: green;'>Loan is granted</h3>", unsafe_allow_html=True)
 
-        if prediction == 1:
-            st.markdown("<h3 style='color: red;'>Loan is not granted</h3>", unsafe_allow_html=True)
-        else:
-            st.markdown("<h3 style='color: green;'>Loan is granted</h3>", unsafe_allow_html=True)
+    #######################################
+    # Importance des caractéristiques / description
+    #######################################
+
+    st.header("**Features importance / description**")
+
+    if st.checkbox("Show feature importance ?"):
+        shap.initjs()
+        X = sample.iloc[:, :-1]
+        explainer = shap.TreeExplainer(clf)
+        shap_values = explainer.shap_values(X)
+
+        fig, ax = plt.subplots(figsize=(10, 10))
+        shap.summary_plot(shap_values, X)  # Correction ici pour utiliser l'ensemble des valeurs shap
+        st.pyplot(fig)
+
+        if st.checkbox("Show feature description ?"):
+            list_features = X.columns.to_list()
+            feature = st.selectbox('Feature checklist', list_features)
+            st.table(description.loc[description.index == feature][:1])
+
+    #######################################
+    # Affichage des fichiers clients similaires
+    #######################################
+
+    st.header("**Similar customers file display**")
+
+    knn = load_knn(sample)
+    knn_df = load_kmeans(sample, chk_id, knn)
+
+    if st.checkbox("Show similar customer files ?"):
+        st.dataframe(knn_df)
 
 if __name__ == "__main__":
     main()
